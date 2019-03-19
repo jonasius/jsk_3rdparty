@@ -1,2 +1,0 @@
-list(APPEND @PROJECT_NAME@_INCLUDE_DIRS "@CATKIN_DEVEL_PREFIX@/include/nlopt")
-
