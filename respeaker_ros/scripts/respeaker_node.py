@@ -376,6 +376,8 @@ class RespeakerNode(object):
             self.timer_led = rospy.Timer(rospy.Duration(10.0),
                                         lambda e: self.respeaker.set_led_trace(),
                                         oneshot=True)
+        else:
+            self.respeaker.set_led_trace()
 
     def on_audio(self, data):
         self.pub_audio.publish(AudioData(data=data))
