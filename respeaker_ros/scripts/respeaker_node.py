@@ -329,6 +329,7 @@ class RespeakerNode(object):
                                       self.on_timer)
         self.timer_led = None
         self.sub_led = rospy.Subscriber("status_led", ColorRGBA, self.on_status_led)
+        self.sub_led_think = rospy.Subscriber("status_led_think", Bool, self.on_think_led)
 
     def on_shutdown(self):
         try:
@@ -362,9 +363,19 @@ class RespeakerNode(object):
         self.respeaker.set_led_color(r=msg.r, g=msg.g, b=msg.b, a=msg.a)
         if self.timer_led and self.timer_led.is_alive():
             self.timer_led.shutdown()
-        self.timer_led = rospy.Timer(rospy.Duration(3.0),
+        self.timer_led = rospy.Timer(rospy.Duration(10.0),
                                        lambda e: self.respeaker.set_led_trace(),
                                        oneshot=True)
+
+    def on_think_led(self, msg):
+        # self.respeaker.set_led_color(r=msg.r, g=msg.g, b=msg.b, a=msg.a)
+        if msg.data == True:
+            self.respeaker.set_led_think()
+            if self.timer_led and self.timer_led.is_alive():
+                self.timer_led.shutdown()
+            self.timer_led = rospy.Timer(rospy.Duration(10.0),
+                                        lambda e: self.respeaker.set_led_trace(),
+                                        oneshot=True)
 
     def on_audio(self, data):
         self.pub_audio.publish(AudioData(data=data))

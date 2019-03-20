@@ -9,6 +9,7 @@ import json
 from threading import Lock
 
 from audio_common_msgs.msg import AudioData
+from std_msgs.msg import Bool, ColorRGBA
 from sound_play.msg import SoundRequest, SoundRequestAction, SoundRequestGoal
 
 from speech_recognition_msgs.msg import SpeechRecognitionCandidates
@@ -115,6 +116,8 @@ class ROSSpeechRecognition(object):
             "timeout": rospy.get_param("~timeout_signal",
                                        "/usr/share/sounds/ubuntu/stereo/window-slide.ogg"),
         }
+        self.status_led = rospy.Publisher('/status_led', ColorRGBA, queue_size=10)
+        self.status_led_think = rospy.Publisher('/status_led_think', Bool, queue_size=10)
 
         self.dyn_srv = Server(Config, self.config_callback)
 
@@ -256,6 +259,7 @@ class ROSSpeechRecognition(object):
 
             start_time = rospy.Time.now()
             while (rospy.Time.now() - start_time).to_sec() < duration:
+                self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                 rospy.loginfo("Waiting for speech...")
                 try:
                     audio = self.recognizer.listen(
@@ -265,6 +269,7 @@ class ROSSpeechRecognition(object):
                     break
                 if not req.quiet:
                     self.play_sound("recognized", 0.05)
+                self.status_led_think.publish(True)
                 rospy.loginfo("Waiting for result... (Sent %d bytes)" % len(audio.get_raw_data()))
 
                 try:

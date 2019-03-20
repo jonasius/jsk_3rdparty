@@ -1,9 +1,9 @@
 <launch>
-  <arg name="launch_sound_play" default="true" />
-  <arg name="launch_audio_capture" default="true" />
+  <arg name="launch_sound_play" default="false" />
+  <arg name="launch_audio_capture" default="false" />
 
-  <arg name="engine" default="Google" />
-  <arg name="language" default="en-US" />
+  <arg name="engine" default="GoogleCloud" />
+  <arg name="language" default="de-DE" />
   <arg name="continuous" default="false" />
 
   <!-- sound play -->
