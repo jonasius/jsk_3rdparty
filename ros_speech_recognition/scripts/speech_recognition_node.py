@@ -6,10 +6,13 @@ import actionlib
 import rospy
 import speech_recognition as SR
 import json
+import wave
+import time
 from threading import Lock
 
 from audio_common_msgs.msg import AudioData
 from std_msgs.msg import Bool, ColorRGBA
+from std_srvs.srv import SetBool
 from sound_play.msg import SoundRequest, SoundRequestAction, SoundRequestGoal
 
 from speech_recognition_msgs.msg import SpeechRecognitionCandidates
@@ -40,6 +43,7 @@ class ROSAudio(SR.AudioSource):
         self.CHUNK = chunk_size
 
         self.stream = None
+
 
     def open(self):
         if self.stream is not None:
@@ -96,6 +100,8 @@ class ROSSpeechRecognition(object):
     def __init__(self):
         self.default_duration = rospy.get_param("~duration", 10.0)
         self.engine = None
+        self.record_wave = False
+        self.wavefile = None
         self.recognizer = SR.Recognizer()
         self.audio = ROSAudio(topic_name="audio",
                               depth=rospy.get_param("~depth", 16),
@@ -120,7 +126,6 @@ class ROSSpeechRecognition(object):
         self.status_led_think = rospy.Publisher('/status_led_think', Bool, queue_size=10)
 
         self.dyn_srv = Server(Config, self.config_callback)
-
         self.stop_fn = None
         self.continuous = rospy.get_param("~continuous", False)
         if self.continuous:
@@ -132,6 +137,10 @@ class ROSSpeechRecognition(object):
             self.srv = rospy.Service("speech_recognition",
                                      SpeechRecognition,
                                      self.speech_recognition_srv_cb)
+
+        # Service to call ambient noise adjust manually
+        self.ambient_noise_adjust_service = rospy.Service(
+            "speech_recognition/ambient_noise_adjust", SetBool, self.ambient_noise_adjust)
 
     def config_callback(self, config, level):
         # config for engine
@@ -163,6 +172,20 @@ class ROSSpeechRecognition(object):
         else:
             self.recognizer.operation_timeout = None
 
+        if config.debug_record and self.wavefile == None:
+            fname = str(rospy.get_rostime())[0:10]
+            rospy.logwarn(
+                "Enabled debug_record fname: testrecording{}.wav".format(fname))
+            self.wavefile = self._prepare_file(
+                "testrecording{}.wav".format(fname))
+            self.record_wave = True
+        elif not config.debug_record:
+            if self.wavefile != None:
+                rospy.logwarn("debug_record disabled")
+                self.wavefile.close()
+                self.wavefile = None
+                self.record_wave = False
+
         # config for VAD
         if config.pause_threshold < config.non_speaking_duration:
             config.pause_threshold = config.non_speaking_duration
@@ -171,6 +194,13 @@ class ROSSpeechRecognition(object):
         self.recognizer.phrase_threshold = config.phrase_threshold
 
         return config
+
+    def ambient_noise_adjust(self, param):
+        if param.data == True:
+            rospy.loginfo("Adjusting speech recognition for ambient noise")
+            with self.audio as src:
+                self.recognizer.adjust_for_ambient_noise(src)
+                rospy.loginfo("Set minimum energy threshold to {}".format(self.recognizer.energy_threshold))
 
     def play_sound(self, key, timeout=5.0):
         if self.act_sound is None:
@@ -234,13 +264,26 @@ class ROSSpeechRecognition(object):
                 self.recognizer.adjust_for_ambient_noise(src)
                 rospy.loginfo("Set minimum energy threshold to {}".format(
                     self.recognizer.energy_threshold))
+        rospy.loginfo("Started start_speech_recognition continuous")
         self.stop_fn = self.recognizer.listen_in_background(
             self.audio, self.audio_cb, phrase_time_limit=self.phrase_time_limit)
         rospy.on_shutdown(self.on_shutdown)
 
     def on_shutdown(self):
+        if self.record_wave:
+            self.wavefile.close()
         if self.stop_fn is not None:
             self.stop_fn()
+
+    def _prepare_file(self, fname, mode='wb'):
+        wavefile = wave.open(fname, mode)
+        # wavefile.setnchannels(self.channels)
+        wavefile.setnchannels(1)
+        # wavefile.setsampwidth(self.pyaudio.get_sample_size(pyaudio.paInt16))
+        wavefile.setsampwidth(2)
+        # wavefile.setframerate(self.rate)
+        wavefile.setframerate(16000)
+        return wavefile
 
     def speech_recognition_srv_cb(self, req):
         res = SpeechRecognitionResponse()
@@ -264,6 +307,10 @@ class ROSSpeechRecognition(object):
                 try:
                     audio = self.recognizer.listen(
                         src, timeout=self.listen_timeout, phrase_time_limit=self.phrase_time_limit)
+                    start = time.time()    
+                    if self.record_wave:
+                        self.wavefile.writeframes(audio.get_wav_data())
+                    rospy.logwarn("time for wave write: {}".format(time.time()-start))
                 except SR.WaitTimeoutError as e:
                     rospy.logwarn(e)
                     break
