@@ -18,7 +18,7 @@ class SpeechToText(object):
         self.sample_rate = rospy.get_param("~sample_rate", 16000)
         self.sample_width = rospy.get_param("~sample_width", 2L)
         # language of STT service
-        self.language = rospy.get_param("~language", "ja-JP")
+        self.language = rospy.get_param("~language", "de-DE")
         # ignore voice input while the robot is speaking
         self.self_cancellation = rospy.get_param("~self_cancellation", True)
         # time to assume as SPEAKING after tts service is finished
@@ -68,10 +68,19 @@ class SpeechToText(object):
             return
         data = SR.AudioData(msg.data, self.sample_rate, self.sample_width)
         try:
-            rospy.loginfo("Waiting for result %d" % len(data.get_raw_data()))
-            result = self.recognizer.recognize_google(
-                data, language=self.language)
-            msg = SpeechRecognitionCandidates(transcript=[result])
+            credentials_path = rospy.get_param("~google_cloud_credentials_json", None)
+            if credentials_path is not None:
+                with open(credentials_path) as j:
+                    credentials_json = j.read()
+            else:
+                credentials_json = None
+            args = {'credentials_json': credentials_json,
+                         'preferred_phrases': rospy.get_param('~google_cloud_preferred_phrases', None)}
+            # rospy.loginfo("Waiting for result %d" % len(data.get_raw_data()))
+            # result = self.recognizer.recognize_google(
+            #     data, language=self.language)
+            self.recognizer.recognize_google_cloud(audio_data=data, language=self.language, **args)
+            # msg = SpeechRecognitionCandidates(transcript=[result])
             self.pub_speech.publish(msg)
         except SR.UnknownValueError as e:
             rospy.logerr("Failed to recognize: %s" % str(e))
