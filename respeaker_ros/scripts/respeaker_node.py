@@ -449,7 +449,7 @@ class RespeakerNode(object):
             self.is_speeching = False
             duration = 8.0 * len(buf) * self.respeaker_audio.bitwidth
             duration = duration / self.respeaker_audio.rate / self.respeaker_audio.bitdepth
-            rospy.loginfo("Speech detected for %.3f seconds" % duration)
+            # rospy.loginfo("Speech detected for %.3f seconds" % duration)
             if self.speech_min_duration <= duration < self.speech_max_duration:
 
                 self.pub_speech_audio.publish(AudioData(data=buf))
