@@ -15,6 +15,7 @@ import rospy
 import struct
 import sys
 import time
+import wave
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, Int32, ColorRGBA
@@ -224,6 +225,7 @@ class RespeakerAudio(object):
         self.rate = 16000
         self.bitwidth = 2
         self.bitdepth = 16
+        
 
         # find device
         count = self.pyaudio.get_device_count()
@@ -258,6 +260,7 @@ class RespeakerAudio(object):
             stream_callback=self.stream_callback,
             input_device_index=self.device_index,
         )
+        self.wavefile = self._prepare_file("testrecording.wav")
 
     def __del__(self):
         self.stop()
@@ -271,6 +274,18 @@ class RespeakerAudio(object):
             self.pyaudio.terminate()
         except:
             pass
+        try:
+            self.wavefile.close()
+        except:
+            pass
+
+    def _prepare_file(self, fname, mode='wb'):
+        wavefile = wave.open(fname, mode)
+        rospy.logwarn(os.getcwd())
+        wavefile.setnchannels(self.channels)
+        wavefile.setsampwidth(self.pyaudio.get_sample_size(pyaudio.paInt16))
+        wavefile.setframerate(self.rate)
+        return wavefile
 
     def stream_callback(self, in_data, frame_count, time_info, status):
         # split channel
@@ -280,6 +295,10 @@ class RespeakerAudio(object):
         chan_data = data[:, self.channel]
         # invoke callback
         self.on_audio(chan_data.tostring())
+        # Save as wav, experimental
+        if False:
+            rospy.logwarn("ACHTUNG AUDIOAUFNAHME IN WAV-DATEI AKTIVIERT!")
+            self.wavefile.writeframes(in_data)
         return None, pyaudio.paContinue
 
     def start(self):
