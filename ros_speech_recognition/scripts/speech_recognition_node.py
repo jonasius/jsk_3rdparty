@@ -12,7 +12,7 @@ import os
 from threading import Lock
 from six.moves import queue
 from audio_common_msgs.msg import AudioData
-from std_msgs.msg import Bool, ColorRGBA
+from std_msgs.msg import Bool, ColorRGBA, String
 from std_srvs.srv import SetBool
 from sound_play.msg import SoundRequest, SoundRequestAction, SoundRequestGoal
 
@@ -204,6 +204,7 @@ class ROSSpeechRecognition(object):
         # Service to call ambient noise adjust manually
         self.ambient_noise_adjust_service = rospy.Service(
             "speech_recognition/ambient_noise_adjust", SetBool, self.ambient_noise_adjust)
+        self.stt_pub = rospy.Publisher('/stt', String, queue_size=1)
 
     def config_callback(self, config, level):
         # config for engine
@@ -423,9 +424,14 @@ class ROSSpeechRecognition(object):
                 responses = client.streaming_recognize(streaming_config, requests)
                 for response in responses:
                     for result in response.results:
-                        rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
-                            result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
+                        if not result.alternatives:
+                            continue
                         # print(result.alternatives[0].transcript)
+                        self.stt_pub.publish(result.alternatives[0].transcript)
+                        # rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
+                            # result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
+                        # print(result.alternatives[0].transcript)
+
                         if result.is_final:
                             # Set LED Ring to "think"
                             self.status_led_think.publish(True)
@@ -455,10 +461,10 @@ class ROSSpeechRecognition(object):
                 try:
                     audio = self.recognizer.listen(
                         src, timeout=self.listen_timeout, phrase_time_limit=self.phrase_time_limit)
-                    start = time.time()    
+                    # start = time.time()    
                     if self.record_wave:
                         self.wavefile.writeframes(audio.get_wav_data())
-                    rospy.logwarn("time for wave write: {}".format(time.time()-start))
+                    # rospy.logwarn("time for wave write: {}".format(time.time()-start))
                 except SR.WaitTimeoutError as e:
                     rospy.logwarn(e)
                     break
