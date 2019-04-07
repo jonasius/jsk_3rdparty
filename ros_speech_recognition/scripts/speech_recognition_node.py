@@ -77,12 +77,11 @@ class ROSAudio(SR.AudioSource):
             self.sub_audio = rospy.Subscriber(
                 topic_name, AudioData, self._fill_buffer)
             self._buff = queue.Queue()
-            # self._buff = queue.LifoQueue()
             # self.closed = True
             self.closed = False
 
         def __enter__(self):
-            rospy.loginfo("__enter__ AudioStream called!")
+            # rospy.loginfo("__enter__ AudioStream called!")
             self.closed = False
             return self
 
@@ -416,6 +415,7 @@ class ROSSpeechRecognition(object):
             config=config, single_utterance=True, interim_results=True)
         with self.audio as saudio:
             with saudio.stream as audio:
+                transcript = None
                 # Set LED Ring green
                 self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                 audio_generator = audio.generator()
@@ -424,20 +424,23 @@ class ROSSpeechRecognition(object):
                 responses = client.streaming_recognize(streaming_config, requests)
                 for response in responses:
                     for result in response.results:
+                        self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                         if not result.alternatives:
                             continue
-                        # print(result.alternatives[0].transcript)
-                        self.stt_pub.publish(result.alternatives[0].transcript)
+                        transcript = result.alternatives[0].transcript
+                        print("transcipt:{}".format(transcript))
+                        self.stt_pub.publish(transcript)
                         # rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
                             # result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
-                        # print(result.alternatives[0].transcript)
-
                         if result.is_final:
                             # Set LED Ring to "think"
                             self.status_led_think.publish(True)
-                            res.result = SpeechRecognitionCandidates(
-                                transcript=[result.alternatives[0].transcript])
+                            res.result = SpeechRecognitionCandidates(transcript=[transcript])
                             return res
+                    if response.speech_event_type and transcript is None:
+                        # No speech input
+                        self.status_led.publish(1.0, 0.0, 0.0, 1.0)
+                        return res
 
     def speech_recognition_srv_cb(self, req):
         res = SpeechRecognitionResponse()
