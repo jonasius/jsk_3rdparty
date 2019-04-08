@@ -90,24 +90,11 @@ class ROSAudio(SR.AudioSource):
             # Signal the generator to terminate so that the client's
             # streaming_recognize method will not block the process termination.
             self._buff.put(None)
-
-        # def read_once(self, size):
-        #     with self.lock:
-        #         buf = self.buffer[:size]
-        #         self.buffer = self.buffer[size:]
-        #         return buf
-
-        # def read(self, size):
-        #     while not rospy.is_shutdown() and len(self.buffer) < size:
-        #         rospy.sleep(0.001)
-        #     return self.read_once(size)
         
         def generator(self):
-            # print("Generator called")
             while not self.closed:
                 chunk = self._buff.get()
                 if chunk is None:
-                    # print("1111chunk none!")
                     return
                 data = [chunk]
                 # while not queue.empty():
@@ -115,12 +102,9 @@ class ROSAudio(SR.AudioSource):
                     try:
                         chunk = self._buff.get(block=False)
                         if chunk is None:
-                            # print("2222chunk none!")
                             return
                         data.append(chunk)
-                        # print("chunk chunk chunk!")
                     except queue.Empty:
-                        # print("queue.Empty:")
                         break
                 # print(data)
                 yield b''.join(data)
@@ -136,21 +120,6 @@ class ROSAudio(SR.AudioSource):
         def close(self):
             self.closed = True
             self._buff.put(None)
-            # Signal the generator to terminate so that the client's
-            # streaming_recognize method will not block the process termination.
-            # self._buff.put(None)
-            # try:
-            #     self.sub_audio.unregister()
-            # except:
-            #     pass
-            # self.buffer = bytes()
-
-        # def audio_cb(self, msg):
-        #     with self.lock:
-        #         self.buffer += bytes(msg.data)
-        #         overflow = len(self.buffer) - self.buffer_size
-        #         if overflow > 0:
-        #             self.buffer = self.buffer[overflow:]
 
 
 class ROSSpeechRecognition(object):
@@ -204,6 +173,7 @@ class ROSSpeechRecognition(object):
         self.ambient_noise_adjust_service = rospy.Service(
             "speech_recognition/ambient_noise_adjust", SetBool, self.ambient_noise_adjust)
         self.stt_pub = rospy.Publisher('/stt', String, queue_size=1)
+        self.tts_pub = rospy.Publisher('/tts', String, queue_size=1)
 
     def config_callback(self, config, level):
         # config for engine
@@ -396,20 +366,23 @@ class ROSSpeechRecognition(object):
     ##################
     ##################
     def speech_recognition_stream_srv_test(self, req):
+        rospy.loginfo("started speech recognition stream")
+        self.stt_pub.publish("")
+        self.tts_pub.publish("")
         res = SpeechRecognitionResponse()
-        rospy.loginfo("started speech recognition stream test")
-        
+        transcript = None
+        result_is_final = False
         language_code = 'de-DE'  # a BCP-47 language tag
         custom_phrases = rospy.get_param(
             '~google_cloud_preferred_phrases', None)
         client = speech_v1.SpeechClient()
         config = types.RecognitionConfig(
             encoding=enums.RecognitionConfig.AudioEncoding.LINEAR16,
-            # sample_rate_hertz=RATE,
             sample_rate_hertz=self.audio.SAMPLE_RATE,
             language_code=language_code,
             speech_contexts=[speech_v1.types.SpeechContext(
-                phrases=custom_phrases,)]
+                phrases=custom_phrases,)],
+            model='command_and_search'
         )
         streaming_config = types.StreamingRecognitionConfig(
             config=config, single_utterance=True, interim_results=True)
@@ -417,29 +390,49 @@ class ROSSpeechRecognition(object):
             with saudio.stream as audio:
                 transcript = None
                 # Set LED Ring green
-                self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                 audio_generator = audio.generator()
+                self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                 requests = (types.StreamingRecognizeRequest(audio_content=content)
                             for content in audio_generator)
                 responses = client.streaming_recognize(streaming_config, requests)
                 for response in responses:
+                    if not response.results:
+                        # self.status_led.publish(1.0, 0.0, 1.0, 0.5)
+                        audio.close()
+                        # return res
                     for result in response.results:
                         self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                         if not result.alternatives:
+                            self.status_led.publish(0.0, 0.0, 1.0, 0.5)
+                            rospy.logerr(result)
                             continue
+                            # break
                         transcript = result.alternatives[0].transcript
+                        self.status_led.publish(0.0, 1.0, 0.0, 0.5)
                         self.stt_pub.publish(transcript)
-                        # rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
-                            # result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
+                        rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
+                            result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
+                        res.result = SpeechRecognitionCandidates(transcript=[transcript])
                         if result.is_final:
+                            result_is_final = result.is_final
                             # Set LED Ring to "think"
                             self.status_led_think.publish(True)
                             res.result = SpeechRecognitionCandidates(transcript=[transcript])
                             return res
+                    rospy.logwarn("DEBUG ENDE inner FOR")
+                    rospy.logwarn(response)
+                    rospy.logwarn(res.result)
                     if response.speech_event_type and transcript is None:
                         # No speech input
                         self.status_led.publish(1.0, 0.0, 0.0, 1.0)
+                        result_is_final = True
                         return res
+                    else:
+                        rospy.logwarn("ELSE clause")
+                        rospy.logwarn(response)
+                    # return res
+                return res
+
 
     def speech_recognition_srv_cb(self, req):
         res = SpeechRecognitionResponse()
