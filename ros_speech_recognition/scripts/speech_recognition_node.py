@@ -428,7 +428,6 @@ class ROSSpeechRecognition(object):
                         if not result.alternatives:
                             continue
                         transcript = result.alternatives[0].transcript
-                        print("transcipt:{}".format(transcript))
                         self.stt_pub.publish(transcript)
                         # rospy.loginfo('Text:{}; Finished: {}; Stability: {}'.format(
                             # result.alternatives[0].transcript.encode('utf-8'), result.is_final, result.stability))
