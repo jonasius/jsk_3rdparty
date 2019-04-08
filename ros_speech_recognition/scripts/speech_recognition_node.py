@@ -467,7 +467,7 @@ class ROSSpeechRecognition(object):
                 # rospy.logwarn("time for wave write: {}".format(time.time()-start))
             except SR.WaitTimeoutError as e:
                 rospy.logwarn(e)
-                break
+                # break
                 # if not req.quiet:
                 #     self.play_sound("recognized", 0.05)
                 # self.status_led_think.publish(True)
@@ -487,8 +487,8 @@ class ROSSpeechRecognition(object):
                 # except SR.RequestError as e:
                 #     rospy.logerr("Failed to recognize: %s" % str(e))
                 # rospy.sleep(0.1)
-                if rospy.is_shutdown():
-                    break
+                # if rospy.is_shutdown():
+                #     break
 
             # Timeout
             # if not req.quiet:
