@@ -168,6 +168,9 @@ class ROSSpeechRecognition(object):
             self.srv = rospy.Service("speech_recognition",
                                      SpeechRecognition,
                                      self.speech_recognition_stream_srv_test)
+            # self.record_service = rospy.Service("speech_recognition",
+            #                                     SpeechRecognition,
+            #                                     self.speech_recognition_wave_record)
 
         # Service to call ambient noise adjust manually
         self.ambient_noise_adjust_service = rospy.Service(
@@ -434,60 +437,62 @@ class ROSSpeechRecognition(object):
                 return res
 
 
-    def speech_recognition_srv_cb(self, req):
+    def speech_recognition_wave_record(self, req):
         res = SpeechRecognitionResponse()
 
-        duration = req.duration
-        if duration <= 0.0:
-            duration = self.default_duration
+        # duration = req.duration
+        # if duration <= 0.0:
+        #     duration = self.default_duration
 
         with self.audio as src:
-            if self.dynamic_energy_threshold:
-                self.recognizer.adjust_for_ambient_noise(src)
-                rospy.loginfo("Set minimum energy threshold to %f" % self.recognizer.energy_threshold)
+            # if self.dynamic_energy_threshold:
+            #     self.recognizer.adjust_for_ambient_noise(src)
+            #     rospy.loginfo("Set minimum energy threshold to %f" % self.recognizer.energy_threshold)
 
-            if not req.quiet:
-                self.play_sound("start", 0.1)
+            # if not req.quiet:
+            #     self.play_sound("start", 0.1)
 
-            start_time = rospy.Time.now()
-            while (rospy.Time.now() - start_time).to_sec() < duration:
-                self.status_led.publish(0.0, 1.0, 0.0, 0.5)
-                rospy.loginfo("Waiting for speech...")
-                try:
-                    audio = self.recognizer.listen(
-                        src, timeout=self.listen_timeout, phrase_time_limit=self.phrase_time_limit)
-                    # start = time.time()    
-                    if self.record_wave:
-                        self.wavefile.writeframes(audio.get_wav_data())
-                    # rospy.logwarn("time for wave write: {}".format(time.time()-start))
-                except SR.WaitTimeoutError as e:
-                    rospy.logwarn(e)
-                    break
-                if not req.quiet:
-                    self.play_sound("recognized", 0.05)
-                self.status_led_think.publish(True)
-                rospy.loginfo("Waiting for result... (Sent %d bytes)" % len(audio.get_raw_data()))
+            # start_time = rospy.Time.now()
+            # while (rospy.Time.now() - start_time).to_sec() < duration:
+            #     self.status_led.publish(0.0, 1.0, 0.0, 0.5)
+                # rospy.loginfo("Waiting for speech...")
+            try:
+                # audio = self.recognizer.listen(
+                #     src, timeout=self.listen_timeout, phrase_time_limit=self.phrase_time_limit)
+                audio = self.recognizer.record(
+                    src)
+                # start = time.time()
+                rospy.logwarn("recording wavefile")    
+                self.wavefile.writeframes(audio.get_wav_data())
+                # rospy.logwarn("time for wave write: {}".format(time.time()-start))
+            except SR.WaitTimeoutError as e:
+                rospy.logwarn(e)
+                break
+                # if not req.quiet:
+                #     self.play_sound("recognized", 0.05)
+                # self.status_led_think.publish(True)
+                # rospy.loginfo("Waiting for result... (Sent %d bytes)" % len(audio.get_raw_data()))
 
-                try:
-                    result = self.recognize(audio)
-                    rospy.loginfo("Result: %s" % result.encode('utf-8'))
-                    if not req.quiet:
-                        self.play_sound("success", 0.1)
-                    res.result = SpeechRecognitionCandidates(transcript=[result])
-                    return res
-                except SR.UnknownValueError:
-                    if self.dynamic_energy_threshold:
-                        self.recognizer.adjust_for_ambient_noise(src)
-                        rospy.loginfo("Set minimum energy threshold to %f" % self.recognizer.energy_threshold)
-                except SR.RequestError as e:
-                    rospy.logerr("Failed to recognize: %s" % str(e))
-                rospy.sleep(0.1)
+                # try:
+                #     result = self.recognize(audio)
+                #     rospy.loginfo("Result: %s" % result.encode('utf-8'))
+                #     if not req.quiet:
+                #         self.play_sound("success", 0.1)
+                #     res.result = SpeechRecognitionCandidates(transcript=[result])
+                #     return res
+                # except SR.UnknownValueError:
+                #     if self.dynamic_energy_threshold:
+                #         self.recognizer.adjust_for_ambient_noise(src)
+                #         rospy.loginfo("Set minimum energy threshold to %f" % self.recognizer.energy_threshold)
+                # except SR.RequestError as e:
+                #     rospy.logerr("Failed to recognize: %s" % str(e))
+                # rospy.sleep(0.1)
                 if rospy.is_shutdown():
                     break
 
             # Timeout
-            if not req.quiet:
-                self.play_sound("timeout", 0.1)
+            # if not req.quiet:
+            #     self.play_sound("timeout", 0.1)
             return res
 
     def spin(self):
